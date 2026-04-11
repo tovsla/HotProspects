@@ -2,6 +2,7 @@ import CodeScanner
 import SwiftUI
 import SwiftData
 internal import AVFoundation
+import UserNotifications
 
 struct ProspectsView: View {
     enum FilterType {
@@ -49,32 +50,36 @@ struct ProspectsView: View {
                             prospect.isContacted.toggle()
                         }
                         .tint(.green)
+                        Button("Remind Me", systemImage: "bell") {
+                            addNotification(for: prospect)
+                        }
+                        .tint(.orange)
                     }
                 }
                 .tag(prospect)
                 
             }
-                .navigationTitle(title)
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Scan", systemImage: "qrcode.viewfinder") {
-                            isShowingScanner = true
-                        }
-                    }
-                    ToolbarItem(placement: .topBarLeading)  {
-                         EditButton()
-                    }
-                    if selectedProspects.isEmpty == false {
-                        ToolbarItem(placement: .bottomBar)  {
-                            Button("Delete Selected", action: delete)
-                        }
+            .navigationTitle(title)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Scan", systemImage: "qrcode.viewfinder") {
+                        isShowingScanner = true
                     }
                 }
-                .sheet(isPresented: $isShowingScanner) {
-                    CodeScannerView(codeTypes: [.qr], simulatedData: "Denis Dobrotin\ndenis.dobrotin@gmail.com",completion: handleScan)
+                ToolbarItem(placement: .topBarLeading)  {
+                    EditButton()
                 }
+                if selectedProspects.isEmpty == false {
+                    ToolbarItem(placement: .bottomBar)  {
+                        Button("Delete Selected", action: delete)
+                    }
+                }
+            }
+            .sheet(isPresented: $isShowingScanner) {
+                CodeScannerView(codeTypes: [.qr], simulatedData: "Denis Dobrotin\ndenis.dobrotin@gmail.com",completion: handleScan)
+            }
         }
-
+        
     }
     init(filter: FilterType) {
         self.filter = filter
@@ -82,7 +87,7 @@ struct ProspectsView: View {
             let showContactedOnly = filter == .contacted
             _prospects = Query(filter: #Predicate { $0.isContacted == showContactedOnly
             }, sort: [SortDescriptor(\Prospect.name)])
-                               
+            
         }
         
     }
@@ -104,8 +109,39 @@ struct ProspectsView: View {
             modelContext.delete(prospect)
         }
     }
+    
+    func addNotification (for prospect: Prospect) {
+        let center = UNUserNotificationCenter.current()
+        let addRequest = {
+            let content = UNMutableNotificationContent()
+            content.title = "Contact \(prospect.name)"
+            content.subtitle = prospect.emailAddress
+            content.sound = UNNotificationSound.default
+            
+            //            var dateComponents = DateComponents()
+            //            dateComponents.hour = 9
+            //            let trigger = UNCalendarNotificationTrigger(dateMatching: dateComponents, repeats: false)
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: 5, repeats: false)
+            let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: trigger)
+            center.add(request)
+        }
+        
+        center.getNotificationSettings { settings in
+            if settings.authorizationStatus == .authorized {
+                addRequest()
+            } else {
+                center.requestAuthorization(options: [.alert, .badge, .sound]) {
+                    success, error in
+                    if success {
+                        addRequest()
+                    } else if let error {
+                        print(error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
 }
-
 #Preview {
     ProspectsView(filter: .none)
         .modelContainer(for: Prospect.self)
